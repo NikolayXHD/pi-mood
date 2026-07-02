@@ -1,0 +1,30 @@
+{
+  "name": "pi-mood",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Periodic rule reminders from AGENTS.md — weighted probabilistic injection via context event",
+  "keywords": [
+    "pi-package"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./src/main.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --test",
+    "lint": "tsc --noEmit && eslint ."
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "file:../../.local/share/nvm/v25.9.0/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-agent-core",
+    "@earendil-works/pi-coding-agent": "file:../../.local/share/nvm/v25.9.0/lib/node_modules/@earendil-works/pi-coding-agent",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.0",
+    "eslint": "^10.6.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1"
+  }
+}

@@ -43,7 +43,8 @@ brief to user and request skip.
 - `@5` — relative frequency. Higher = selected more often.
 - After selection, the rule's effective frequency is halved for the next pick
   (2^(-times_shown)).
-- A rule is injected every `MOOD_INJECTION_FREQUENCY` LLM calls (default 5).
+- A rule is injected every N LLM calls. N defaults to 5, configurable in
+  `.pi/mood.json` (see Config below).
 
 ## Status bar
 
@@ -68,5 +69,10 @@ pi install ./pi-mood
 
 ## Config
 
-- `MOOD_INJECTION_FREQUENCY` — environment variable, default 5. Inject rule
-  every N LLM calls.
+Create `.pi/mood.json` in the project root:
+
+```json
+{ "injectionFrequency": 5 }
+```
+
+- `injectionFrequency` (number, default 5) — inject a rule every N LLM calls.

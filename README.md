@@ -6,10 +6,10 @@ LLM agents routinely ignore simple rules, even when they are clearly stated in
 AGENTS.md. The rules are there — in the system prompt — but after a few dozens
 of tool calls they get buried under conversation history.
 
-Yet the same LLM follows plan mode instructions flawlessly. Plan mode works
-because it injects a reminder **directly into the user message**, not from the
-distant system prompt. So the model **can** follow rules — it just needs them
-close to the generation point.
+Yet the same LLM follows "plan mode" instructions e.g. in opencode. Plan mode
+works because it injects a reminder **directly into the user message**, not
+from the distant system prompt. So the model **can** follow rules — it just
+needs them close to the generation point.
 
 Periodic injection of your own rules throughout a session should therefore make
 the agent substantially more reliable. The same principle powers steering mode

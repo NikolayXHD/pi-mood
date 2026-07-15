@@ -23,7 +23,9 @@ export class Cooldown {
 
   countersSnapshot(): Map<string, number> {
     const result = new Map<string, number>();
-    for (const k of this.keys) result.set(k, this.counters.get(k) ?? 0);
+    for (const k of this.keys) {
+      result.set(k, this.counters.get(k) ?? 0);
+    }
     return result;
   }
 
@@ -31,7 +33,9 @@ export class Cooldown {
     const result = new Map<string, number>();
     if (this.totalWeight === 0) {
       const uniform = 1 / this.keys.length;
-      for (const k of this.keys) result.set(k, uniform);
+      for (const k of this.keys) {
+        result.set(k, uniform);
+      }
       return result;
     }
     const total = this.keys.reduce((s, k) => {

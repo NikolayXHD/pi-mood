@@ -13,13 +13,21 @@ export function parseMoodText(
   content: string,
 ): { heading: string; body: string } | null {
   const prefix = `${MOOD_PREFIX}${SEP}`;
-  if (!content.startsWith(prefix)) return null;
-  if (!content.endsWith(MOOD_SUFFIX)) return null;
+  if (!content.startsWith(prefix)) {
+    return null;
+  }
+  if (!content.endsWith(MOOD_SUFFIX)) {
+    return null;
+  }
   const inner = content.slice(prefix.length, -MOOD_SUFFIX.length);
   const idx = inner.indexOf(SEP);
-  if (idx === -1) return null;
+  if (idx === -1) {
+    return null;
+  }
   const heading = inner.slice(0, idx);
   const body = inner.slice(idx + SEP.length);
-  if (heading.length === 0) return null;
+  if (heading.length === 0) {
+    return null;
+  }
   return { heading, body };
 }

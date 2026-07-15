@@ -40,10 +40,14 @@ export function parse(content: string): Rule[] {
 
       const section = { heading, weight, body: [] as string[], level };
       const cleanHeading = "#".repeat(level) + " " + heading;
-      for (const s of stack) s.body.push(cleanHeading);
+      for (const s of stack) {
+        s.body.push(cleanHeading);
+      }
       stack.push(section);
     } else {
-      for (const s of stack) s.body.push(line);
+      for (const s of stack) {
+        s.body.push(line);
+      }
     }
   }
   popUntil(0);

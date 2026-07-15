@@ -31,7 +31,9 @@ describe("Cooldown", () => {
         ["c", 1],
       ]),
     );
-    for (let i = 0; i < 1000; i++) c.pick();
+    for (let i = 0; i < 1000; i++) {
+      c.pick();
+    }
     assert.ok(["a", "b", "c"].includes(c.pick()));
   });
 
@@ -163,7 +165,9 @@ describe("Cooldown", () => {
     );
     const counts = { a: 0, b: 0, c: 0 };
     const N = 1000;
-    for (let i = 0; i < N; i++) counts[c.pick() as keyof typeof counts]++;
+    for (let i = 0; i < N; i++) {
+      counts[c.pick() as keyof typeof counts]++;
+    }
 
     // expected: a=12.5%, b=25%, c=62.5%
     const shareA = counts.a / N;

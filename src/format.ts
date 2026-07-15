@@ -5,20 +5,32 @@ export function trunc(s: string, max: number): string {
 }
 
 export function fmtTokens(n: number): string {
-  if (n === 0) return "—";
-  if (n < 1000) return `${n}t`;
-  if (n < 10000) return `${(n / 1000).toFixed(1)}kt`;
+  if (n === 0) {
+    return "—";
+  }
+  if (n < 1000) {
+    return `${n}t`;
+  }
+  if (n < 10000) {
+    return `${(n / 1000).toFixed(1)}kt`;
+  }
   return `${Math.round(n / 1000)}kt`;
 }
 
 export function fmtTime(ago: number, active: boolean): string {
-  if (!active) return "—";
-  if (ago === 0) return "now";
+  if (!active) {
+    return "—";
+  }
+  if (ago === 0) {
+    return "now";
+  }
   return `${ago} ago`;
 }
 
 export function fmtRule(rule: Rule | null): string {
-  if (!rule) return "—";
+  if (!rule) {
+    return "—";
+  }
   return `«${trunc(rule.heading, 30)}»`;
 }
 

@@ -46,7 +46,9 @@ export class PiIntegration implements Integration {
 
     const rules: Rule[] = [];
     for (const p of paths) {
-      if (!existsSync(p)) continue;
+      if (!existsSync(p)) {
+        continue;
+      }
       try {
         const content = readFileSync(p, "utf-8");
         rules.push(...parse(content));

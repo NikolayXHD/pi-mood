@@ -1,16 +1,17 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { parse, type Rule } from "../src/rule.ts";
 import { Session } from "../src/session.ts";
-import type { Integration } from "../src/integration.ts";
-import { buildMoodText } from "../src/text.ts";
+import type { Integration, MoodData, RestoredState } from "../src/integration.ts";
 
 function stubIntegration(overrides: Partial<Integration> = {}): Integration {
   return {
     loadRules: () => [],
     resolveInjectionFrequency: () => 5,
-    chatEvents: () => [],
-    injectMoodMessage: () => {},
+    persistMood: () => {},
+    buildContextMessages: (m) => m,
+    restore: () => null,
     showStatus: () => {},
     countTokens: () => 0,
     ...overrides,
@@ -29,6 +30,23 @@ function newSession(
       ...overrides,
     }),
   );
+}
+
+function restoredState(
+  calls: number,
+  lastInjection: number,
+  heading?: string,
+  body?: string,
+): RestoredState {
+  return {
+    calls,
+    lastInjection,
+    totalTokens: 0,
+    currentRule:
+      heading !== undefined
+        ? { heading, body: body ?? "", weight: 0 }
+        : null,
+  };
 }
 
 describe("Session", () => {
@@ -54,53 +72,38 @@ describe("Session", () => {
   });
 
   it("maybeInjectMoodMessage injects every N calls", () => {
-    const s = newSession(rules, 3);
+    const persisted: MoodData[] = [];
+    const s = newSession(rules, 3, {
+      persistMood: (data) => persisted.push(data),
+    });
     s.maybeInjectMoodMessage();
     assert.strictEqual(s.currentRule, null);
     s.maybeInjectMoodMessage();
     assert.strictEqual(s.currentRule, null);
     s.maybeInjectMoodMessage();
     assert.ok(s.currentRule !== null);
+    assert.strictEqual(persisted.length, 1);
     s.maybeInjectMoodMessage();
     s.maybeInjectMoodMessage();
     s.maybeInjectMoodMessage();
     assert.ok(s.currentRule !== null);
     assert.strictEqual(s.calls, 6);
+    assert.strictEqual(persisted.length, 2);
   });
 
-  it("restore sets calls, lastInjection, rule and totalTokens", () => {
+  it("restore applies state from integration", () => {
     const s = newSession(rules, 5, {
-      chatEvents: () => [
-        { kind: "assistant" },
-        { kind: "assistant" },
-        {
-          kind: "mood" as const,
-          content: buildMoodText({ heading: "Rule", body: "body", weight: 0 }),
-          tokens: 100,
-        },
-        { kind: "assistant" },
-      ],
+      restore: () => restoredState(3, 2, "Rule", "body"),
     });
-
     s.restore();
-
     assert.strictEqual(s.calls, 3);
     assert.strictEqual(s.lastInjection, 2);
-    assert.strictEqual(s.totalTokens, 100);
     assert.strictEqual(s.currentRule!.heading, "Rule");
   });
 
-  it("restore keeps defaults when no mood entry found", () => {
-    const s = newSession(rules, 5, {
-      chatEvents: () => [
-        { kind: "assistant" },
-        { kind: "assistant" },
-        { kind: "assistant" },
-      ],
-    });
-
+  it("restore keeps defaults when integration returns null", () => {
+    const s = newSession(rules, 5, { restore: () => null });
     s.restore();
-
     assert.strictEqual(s.calls, 0);
     assert.strictEqual(s.totalTokens, 0);
     assert.strictEqual(s.currentRule, null);
@@ -108,35 +111,21 @@ describe("Session", () => {
 
   it("restore + maybeInjectMoodMessage resumes at correct boundary", () => {
     const s = newSession(rules, 5, {
-      chatEvents: () => [
-        { kind: "assistant" },
-        { kind: "assistant" },
-        { kind: "assistant" },
-        {
-          kind: "mood" as const,
-          content: buildMoodText({ heading: "X", body: "y", weight: 0 }),
-          tokens: 0,
-        },
-      ],
+      restore: () => restoredState(3, 3, "X", "y"),
     });
-
     s.restore();
-
     assert.strictEqual(s.calls, 3);
     assert.strictEqual(s.lastInjection, 3);
-
-    // call 4: not a boundary, currentRule unchanged from restore
     s.maybeInjectMoodMessage();
     assert.strictEqual(s.currentRule!.heading, "X");
     assert.strictEqual(s.lastInjection, 3);
-    // call 5: boundary, injection fires
     s.maybeInjectMoodMessage();
     assert.ok(s.currentRule !== null);
     assert.strictEqual(s.calls, 5);
     assert.strictEqual(s.lastInjection, 5);
   });
 
-  it("empty rules does nothing in maybeInjectMoodMessage", () => {
+  it("empty rules does nothing", () => {
     const s = newSession([], 5);
     for (let i = 0; i < 10; i++) {
       s.maybeInjectMoodMessage();
@@ -154,5 +143,28 @@ describe("Session", () => {
       assert.strictEqual(s.lastInjection, i + 1);
     }
     assert.ok(seen.size >= 2);
+  });
+
+  it("buildContextMessages delegates to integration", () => {
+    const messages: AgentMessage[] = [
+      { role: "user", content: "hi", timestamp: 1 },
+    ];
+    const s = newSession(rules, 5, {
+      buildContextMessages: () => [
+        { role: "user", content: "hi", timestamp: 1 },
+        { role: "user", content: "extra", timestamp: 2 },
+      ],
+    });
+    const result = s.buildContextMessages(messages);
+    assert.strictEqual(result.length, 2);
+  });
+
+  it("buildContextMessages returns unmodified when integration passes through", () => {
+    const messages: AgentMessage[] = [
+      { role: "user", content: "hi", timestamp: 1 },
+    ];
+    const s = newSession(rules, 5);
+    const result = s.buildContextMessages(messages);
+    assert.strictEqual(result, messages);
   });
 });

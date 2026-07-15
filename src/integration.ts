@@ -1,29 +1,39 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type {
-  CustomMessageEntry,
+  CompactionEntry,
+  CustomEntry,
   ExtensionAPI,
   ExtensionContext,
   SessionMessageEntry,
 } from "@earendil-works/pi-coding-agent";
 import { estimateTokens, CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 import { parse, type Rule } from "./rule.ts";
+import { buildMoodText } from "./text.ts";
 
-export type ChatEvent =
-  | { kind: "assistant" }
-  | { kind: "mood"; content: string; tokens: number }
-  | { kind: "other" };
+export interface MoodData {
+  heading: string;
+  body: string;
+}
+
+export interface RestoredState {
+  calls: number;
+  lastInjection: number;
+  totalTokens: number;
+  currentRule: Rule | null;
+}
 
 export interface Integration {
   loadRules(): Rule[];
   resolveInjectionFrequency(): number;
-  chatEvents(): ChatEvent[];
-  injectMoodMessage(text: string): void;
+  persistMood(data: MoodData): void;
+  buildContextMessages(messages: AgentMessage[]): AgentMessage[];
+  restore(): RestoredState | null;
   showStatus(text: string): void;
   countTokens(text: string): number;
 }
-
 
 const DEFAULT_INJECTION_FREQUENCY = 5;
 
@@ -74,40 +84,136 @@ export class PiIntegration implements Integration {
     return DEFAULT_INJECTION_FREQUENCY;
   }
 
-  chatEvents(): ChatEvent[] {
-    const result: ChatEvent[] = [];
-    for (const e of this.ctx.sessionManager.getEntries()) {
+  persistMood(data: MoodData): void {
+    this.pi.appendEntry("mood", data);
+  }
+
+  buildContextMessages(messages: AgentMessage[]): AgentMessage[] {
+    const branch = this.ctx.sessionManager.getBranch();
+
+    const moodByParent = new Map<string, MoodData[]>();
+    for (const e of branch) {
+      if (e.type !== "custom" || e.customType !== "mood") {
+        continue;
+      }
+      const ce = e as CustomEntry<MoodData>;
+      if (!ce.data) {
+        continue;
+      }
+      const parent = ce.parentId ?? "";
+      const list = moodByParent.get(parent);
+      if (list) {
+        list.push(ce.data);
+      } else {
+        moodByParent.set(parent, [ce.data]);
+      }
+    }
+    if (moodByParent.size === 0) {
+      return messages;
+    }
+
+    let startAt: string | null = null;
+    for (let i = branch.length - 1; i >= 0; i--) {
+      if (branch[i].type === "compaction") {
+        startAt = (branch[i] as CompactionEntry).firstKeptEntryId;
+        break;
+      }
+    }
+
+    // Message entries in the active branch correspond 1:1 to event.messages.
+    // Proof: session-manager.js:120-217 — buildSessionContext walks path (same as
+    // getBranch) and appendMessage (L175-178) pushes one message per message-entry.
+    // Compaction at L179-207 skips entries before firstKeptEntryId, same as below.
+    const posById = new Map<string, number>();
+    let pos = 0;
+    let started = startAt === null;
+    for (const e of branch) {
+      if (!started) {
+        if (e.id === startAt) {
+          started = true;
+        } else {
+          continue;
+        }
+      }
+      if (e.type === "message") {
+        posById.set(e.id, pos++);
+      }
+    }
+
+    const insertions: { at: number; msg: AgentMessage }[] = [];
+    for (const [parentId, moods] of moodByParent) {
+      const at = posById.get(parentId);
+      if (at === undefined || at > messages.length) {
+        continue;
+      }
+      for (const m of moods) {
+        const text = buildMoodText({
+          heading: m.heading,
+          body: m.body,
+          weight: 0,
+        });
+        insertions.push({
+          at: at + 1,
+          msg: {
+            role: "custom" as const,
+            customType: "mood" as const,
+            content: text,
+            display: false,
+            timestamp: Date.now(),
+          },
+        });
+      }
+    }
+
+    insertions.sort((a, b) => b.at - a.at);
+    for (const ins of insertions) {
+      messages.splice(ins.at, 0, ins.msg);
+    }
+    return messages;
+  }
+
+  restore(): RestoredState | null {
+    let calls = 0;
+    let lastInjection = 0;
+    let lastRule: { heading: string; body: string } | null = null;
+    let totalTokens = 0;
+    let found = false;
+
+    for (const e of this.ctx.sessionManager.getBranch()) {
       if (
         e.type === "message" &&
         (e as SessionMessageEntry).message.role === "assistant"
       ) {
-        result.push({ kind: "assistant" });
-      } else if (e.type === "custom_message" && e.customType === "mood") {
-        const ce = e as CustomMessageEntry;
-        const content = typeof ce.content === "string" ? ce.content : "";
-        result.push({
-          kind: "mood",
-          content,
-          tokens: estimateTokens({
-            role: "custom",
-            customType: "mood",
-            content: [{ type: "text", text: content }],
-            display: false,
-            timestamp: Number(ce.timestamp),
-          }),
-        });
-      } else {
-        result.push({ kind: "other" });
+        calls++;
+      }
+      if (e.type === "custom" && e.customType === "mood") {
+        found = true;
+        lastInjection = calls;
+        const ce = e as CustomEntry<MoodData>;
+        if (ce.data) {
+          const text = buildMoodText({
+            heading: ce.data.heading,
+            body: ce.data.body,
+            weight: 0,
+          });
+          totalTokens += this.countTokens(text);
+          lastRule = { heading: ce.data.heading, body: ce.data.body };
+        }
       }
     }
-    return result;
-  }
 
-  injectMoodMessage(text: string): void {
-    this.pi.sendMessage(
-      { customType: "mood", content: text, display: false },
-      { deliverAs: "steer" },
-    );
+    if (!found) {
+      return null;
+    }
+
+    return {
+      calls,
+      lastInjection,
+      totalTokens,
+      currentRule: lastRule
+        ? { heading: lastRule.heading, body: lastRule.body, weight: 0 }
+        : null,
+    };
   }
 
   showStatus(text: string): void {

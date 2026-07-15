@@ -13,8 +13,9 @@ export default function (pi: ExtensionAPI) {
     session.showStatus();
   });
 
-  pi.on("context", (_event) => {
-    session!.maybeInjectMoodMessage();
-    session!.showStatus();
+  pi.on("context", (event, _ctx) => {
+    session.maybeInjectMoodMessage();
+    session.showStatus();
+    return { messages: session.buildContextMessages(event.messages) };
   });
 }

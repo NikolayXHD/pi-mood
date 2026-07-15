@@ -1,7 +1,8 @@
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { Cooldown } from "./cooldown.ts";
 import type { Rule } from "./rule.ts";
 import type { Integration } from "./integration.ts";
-import { buildMoodText, parseMoodText } from "./text.ts";
+import { buildMoodText } from "./text.ts";
 import { statusLine } from "./format.ts";
 
 export class Session {
@@ -39,7 +40,10 @@ export class Session {
     this.lastInjection = this.calls;
     const text = buildMoodText(this.currentRule!);
     this.totalTokens += this.integration.countTokens(text);
-    this.integration.injectMoodMessage(text);
+    this.integration.persistMood({
+      heading: this.currentRule!.heading,
+      body: this.currentRule!.body,
+    });
   }
 
   showStatus() {
@@ -49,46 +53,23 @@ export class Session {
     );
   }
 
-  private pickRule(): Rule {
-    const key = this.cooldown!.pick();
-    return this.ruleMap.get(key)!;
+  buildContextMessages(messages: AgentMessage[]): AgentMessage[] {
+    return this.integration.buildContextMessages(messages);
   }
 
   restore(): void {
-    let calls = 0;
-    let lastInjection = 0;
-    let lastRule: { heading: string; body: string } | null = null;
-    let totalTokens = 0;
-    let found = false;
-
-    for (const e of this.integration.chatEvents()) {
-      if (e.kind === "assistant") {
-        calls++;
-      }
-      if (e.kind === "mood") {
-        found = true;
-        lastInjection = calls;
-        totalTokens += e.tokens;
-        const r = parseMoodText(e.content);
-        if (r) {
-          lastRule = r;
-        }
-      }
-    }
-
-    if (!found) {
+    const state = this.integration.restore();
+    if (!state) {
       return;
     }
+    this.calls = state.calls;
+    this.lastInjection = state.lastInjection;
+    this.totalTokens = state.totalTokens;
+    this.currentRule = state.currentRule;
+  }
 
-    this.calls = calls;
-    this.lastInjection = lastInjection;
-    this.totalTokens = totalTokens;
-    if (lastRule) {
-      this.currentRule = {
-        heading: lastRule.heading,
-        body: lastRule.body,
-        weight: 0,
-      };
-    }
+  private pickRule(): Rule {
+    const key = this.cooldown!.pick();
+    return this.ruleMap.get(key)!;
   }
 }
